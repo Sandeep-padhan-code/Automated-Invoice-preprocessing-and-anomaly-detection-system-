@@ -1,0 +1,15 @@
+pandas
+numpy
+scikit-learn
+joblib
+Pillow
+opencv-python-headless
+pytesseract
+streamlit
+fastapi
+uvicorn
+python-multipart
+matplotlib
+pytest
+requests
+datasets

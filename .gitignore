@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.streamlit/
+*.pyc
+*.pkl
+node_modules/
+frontend/dist/
+outputs/
+data/processed/
+data/raw/
+models/*.pkl
+models/feature_config.json
