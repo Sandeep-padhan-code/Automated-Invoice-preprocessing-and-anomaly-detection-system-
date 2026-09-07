@@ -8,17 +8,24 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from .anomaly_detector import AnomalyDetector
+from .logging_config import setup_logger
 from .ocr_engine import extract_text
 from .ocr_parser import parse_ocr_text
 from .parser import parse_invoice
 from .preprocessing import FEATURE_COLUMNS, create_features, label_anomalies
 from .validator import calculate_anomaly_score, get_severity, validate_invoice
 
+logger = setup_logger("ledgerlens.pipeline")
+
 
 class InvoicePipeline:
     def __init__(self, model_path: str | Path = "models/random_forest.pkl"):
         self.model_path = Path(model_path)
         self.detector = AnomalyDetector(self.model_path) if self.model_path.exists() else None
+        if self.detector:
+            logger.info("Loaded anomaly detection model from %s", self.model_path)
+        else:
+            logger.warning("No model found at %s. Running in rule-based only mode.", self.model_path)
 
     def process_invoice(self, invoice: Dict[str, Any]) -> Dict[str, Any]:
         anomalies = validate_invoice(invoice)

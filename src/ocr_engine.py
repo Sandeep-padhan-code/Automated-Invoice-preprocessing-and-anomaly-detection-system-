@@ -303,25 +303,32 @@ def resolve_language(
 
 def preprocess_for_ocr(image: Image.Image) -> np.ndarray:
     """
-    Prepare invoice image for OCR.
+    Prepare invoice image for OCR with dimension guards against memory exhaustion.
     """
+    # Guard against decompression bombs and excessively huge images
+    width, height = image.size
+    if width > 10000 or height > 10000 or (width * height) > 30_000_000:
+        raise ValueError(f"Image dimensions ({width}x{height}) exceed maximum allowed size.")
 
     image = ImageOps.exif_transpose(image)
-
     image = image.convert("RGB")
 
-    gray = ImageOps.grayscale(image)
+    # Downscale if image is already sufficiently large to avoid 2x blowup
+    if max(width, height) > 3000:
+        image.thumbnail((2500, 2500), Image.Resampling.LANCZOS)
 
+    gray = ImageOps.grayscale(image)
     arr = np.array(gray)
 
-    # Upscale
-    arr = cv2.resize(
-        arr,
-        None,
-        fx=2.0,
-        fy=2.0,
-        interpolation=cv2.INTER_CUBIC,
-    )
+    # Upscale only if resolution is modest (< 2000px max dimension)
+    if max(arr.shape[:2]) < 2000:
+        arr = cv2.resize(
+            arr,
+            None,
+            fx=2.0,
+            fy=2.0,
+            interpolation=cv2.INTER_CUBIC,
+        )
 
     # Remove small noise
     arr = cv2.GaussianBlur(
@@ -411,11 +418,12 @@ def extract_text(
         # Tesseract configuration
         config = "--oem 3 --psm 6"
 
-        # OCR
+        # OCR with 30-second timeout to prevent CPU hanging on corrupt images
         text = pytesseract.image_to_string(
             processed,
             lang=lang,
             config=config,
+            timeout=30,
         )
 
         text = text.strip()
@@ -429,15 +437,17 @@ def extract_text(
 
         return text
 
-    except pytesseract.TesseractError as exc:
+    except getattr(pytesseract, "TesseractTimeoutError", RuntimeError) as exc:
+        return "OCR_ERROR: OCR processing timed out after 30 seconds."
 
-        return (
-            f"OCR_ERROR: Tesseract language/configuration error: {exc}"
-        )
+    except (Image.DecompressionBombError, ValueError) as exc:
+        return f"OCR_ERROR: Invalid image file: {exc}"
+
+    except pytesseract.TesseractError as exc:
+        return f"OCR_ERROR: Tesseract language/configuration error: {exc}"
 
     except Exception as exc:
-
-        return f"OCR_ERROR: {exc}"
+        return f"OCR_ERROR: Unexpected OCR error occurred: {exc}"
 
 
 # =========================================================

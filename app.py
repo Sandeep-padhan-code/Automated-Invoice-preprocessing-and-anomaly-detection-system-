@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import tempfile
 from pathlib import Path
@@ -77,18 +78,23 @@ def json_safe(value: Any) -> Any:
 
 
 def analyze_file(uploaded_file: Any, pipeline: InvoicePipeline) -> Dict[str, Any]:
-    handle = tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix.lower())
+    suffix = Path(uploaded_file.name).suffix.lower()
+    handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     handle.write(uploaded_file.getvalue())
     handle.close()
     path = Path(handle.name)
-    result = pipeline.process_json(path) if path.suffix == ".json" else pipeline.process_image(path)
-    result["source_name"] = uploaded_file.name
-    return result
+    try:
+        result = pipeline.process_json(path) if path.suffix == ".json" else pipeline.process_image(path)
+        result["source_name"] = uploaded_file.name
+        return result
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def render_finding(text: str, good: bool = False) -> None:
     css = "finding good" if good else "finding"
-    st.markdown(f'<div class="{css}">{"✓" if good else "!"}&nbsp;&nbsp;{text}</div>', unsafe_allow_html=True)
+    safe_text = html.escape(str(text))
+    st.markdown(f'<div class="{css}">{"✓" if good else "!"}&nbsp;&nbsp;{safe_text}</div>', unsafe_allow_html=True)
 
 
 def render_decision(result: Dict[str, Any]) -> None:
@@ -117,7 +123,9 @@ def render_invoice_details(result: Dict[str, Any]) -> None:
     with left:
         for label, value in fields:
             shown = value if value not in (None, "") else "Not found"
-            st.markdown(f'<div class="card" style="height:auto;margin-bottom:.55rem"><div class="section-label" style="margin:0 0 .2rem">{label}</div><div class="card-title">{shown}</div></div>', unsafe_allow_html=True)
+            safe_label = html.escape(str(label))
+            safe_shown = html.escape(str(shown))
+            st.markdown(f'<div class="card" style="height:auto;margin-bottom:.55rem"><div class="section-label" style="margin:0 0 .2rem">{safe_label}</div><div class="card-title">{safe_shown}</div></div>', unsafe_allow_html=True)
     with right:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="card-title">Financial consistency</div><div class="card-copy">The arithmetic check compares extracted values, with a tolerance of 0.05.</div>', unsafe_allow_html=True)

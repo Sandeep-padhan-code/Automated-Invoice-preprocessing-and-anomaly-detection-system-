@@ -11,18 +11,20 @@ def amount_to_float(value: Any) -> Optional[float]:
     return clean_number(value)
 
 
-def _search_keys(obj: Any, keys: set[str]) -> Any:
+def _search_keys(obj: Any, keys: set[str], depth: int = 0) -> Any:
+    if depth > 20:
+        return None
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k.lower() in keys:
                 return v
         for v in obj.values():
-            found = _search_keys(v, keys)
+            found = _search_keys(v, keys, depth + 1)
             if found is not None:
                 return found
     elif isinstance(obj, list):
         for item in obj:
-            found = _search_keys(item, keys)
+            found = _search_keys(item, keys, depth + 1)
             if found is not None:
                 return found
     return None
@@ -60,6 +62,10 @@ def _parse_canonical(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def parse_invoice(json_path: str | Path) -> Dict[str, Any]:
     path = Path(json_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Invoice file not found: {path}")
+    if path.stat().st_size > 10 * 1024 * 1024:
+        raise ValueError("JSON file exceeds maximum permitted size of 10 MB")
     data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, dict) and isinstance(data.get("totals"), dict) and isinstance(data.get("seller"), dict):
         return _parse_canonical(data)
