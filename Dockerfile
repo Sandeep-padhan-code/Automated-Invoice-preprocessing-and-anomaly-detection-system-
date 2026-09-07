@@ -1,49 +1,64 @@
 # ==============================================================================
-# Production Dockerfile for LedgerLens Backend
+# Production Dockerfile for RazorLens Backend
 # ==============================================================================
-FROM python:3.12-slim as base
 
-# Prevent Python from writing .pyc files and buffer stdout/stderr
+FROM python:3.12-slim
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    TESSDATA_PREFIX=/app/tools/tesseract/tessdata
+    DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies including Tesseract OCR & OpenCV dependencies
+# Install Tesseract OCR + required system libraries + all supported languages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-ara \
+    tesseract-ocr-ben \
+    tesseract-ocr-deu \
+    tesseract-ocr-fra \
+    tesseract-ocr-guj \
+    tesseract-ocr-hin \
+    tesseract-ocr-ita \
+    tesseract-ocr-kan \
+    tesseract-ocr-mal \
+    tesseract-ocr-mar \
+    tesseract-ocr-nld \
+    tesseract-ocr-ori \
+    tesseract-ocr-pan \
+    tesseract-ocr-por \
+    tesseract-ocr-spa \
+    tesseract-ocr-tam \
+    tesseract-ocr-tel \
+    tesseract-ocr-tur \
+    tesseract-ocr-urd \
     libgl1 \
     libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r appgroup && useradd -r -g appgroup -u 1000 -m appuser
+# Create non-root user
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -u 1000 -m appuser
 
 WORKDIR /app
 
-# Install Python requirements
+# Install Python dependencies
 COPY requirements.txt /app/
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code and default data/models
+# Copy application
 COPY --chown=appuser:appgroup . /app/
 
-# Set up runtime directories with proper permissions
-RUN mkdir -p /app/outputs/predictions /app/outputs/reports /app/models \
+# Create runtime directories
+RUN mkdir -p \
+    /app/outputs/predictions \
+    /app/outputs/reports \
     && chown -R appuser:appgroup /app
 
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
-
 EXPOSE 8000
 
-ENV ENVIRONMENT=production \
-    HOST=0.0.0.0 \
-    PORT=8000 \
-    WORKERS=2
-
-CMD ["python", "run.py"]
+# Render provides the PORT environment variable.
+CMD ["sh", "-c", "uvicorn backend:app --host 0.0.0.0 --port ${PORT:-8000}"]
