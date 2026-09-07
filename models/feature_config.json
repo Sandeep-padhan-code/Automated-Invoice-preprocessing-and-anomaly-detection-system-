@@ -1,0 +1,18 @@
+{
+  "feature_columns": [
+    "subtotal",
+    "tax",
+    "total",
+    "tax_ratio",
+    "amount_log",
+    "invoice_missing",
+    "date_missing",
+    "vendor_missing",
+    "subtotal_missing",
+    "tax_missing",
+    "total_missing",
+    "negative_total"
+  ],
+  "data_source": "InvoiceJSON train.parquet canonical records",
+  "records": 4014
+}

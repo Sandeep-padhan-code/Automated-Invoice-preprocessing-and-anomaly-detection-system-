@@ -9,15 +9,12 @@ env/
 *.env
 *.log
 *.pyc
-*.pkl
 node_modules/
 frontend/dist/
 frontend/node_modules/
 outputs/
 data/processed/
 data/raw/
-models/*.pkl
-models/feature_config.json
 .DS_Store
 Thumbs.db
 

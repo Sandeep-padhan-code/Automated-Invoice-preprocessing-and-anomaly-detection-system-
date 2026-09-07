@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html
 import json
 import tempfile
@@ -12,7 +13,7 @@ import streamlit as st
 from src.main import InvoicePipeline
 
 
-st.set_page_config(page_title="LedgerLens | Invoice intelligence", page_icon="L", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="RazorLens | Invoice intelligence", page_icon="R", layout="wide", initial_sidebar_state="expanded")
 
 
 def inject_styles() -> None:
@@ -27,8 +28,8 @@ def inject_styles() -> None:
         h1 { font-size:3.1rem !important; line-height:1.05 !important; margin-bottom:.45rem !important; }
         [data-testid="stSidebar"] { background:linear-gradient(180deg,#0A191B,#071113); border-right:1px solid var(--line); }
         [data-testid="stSidebar"] .block-container { padding:2rem 1.25rem; }
-        .brand { display:flex; gap:10px; align-items:center; margin-bottom:2.3rem; }
-        .brand-mark { width:37px; height:37px; display:grid; place-items:center; background:var(--teal); color:#061311; border-radius:12px; font-size:18px; font-weight:800; box-shadow:0 0 22px rgba(65,224,192,.55), 5px 5px 0 #164A47; }
+        .brand { display:flex; gap:12px; align-items:center; margin-bottom:2.3rem; }
+        .brand-logo { width:44px; height:44px; border-radius:12px; object-fit:contain; filter:drop-shadow(0 0 10px rgba(65,224,192,.3)); }
         .brand-name { font-weight:800; font-size:1.1rem; letter-spacing:-.03em; }
         .brand-sub { color:var(--muted); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; }
         .eyebrow, .section-label { color:var(--teal); font-family:'DM Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; }
@@ -166,9 +167,9 @@ def render_single(pipeline: InvoicePipeline) -> None:
     st.markdown('<div class="section-label">Single invoice</div>', unsafe_allow_html=True)
     uploaded = st.file_uploader("Drop an invoice image or JSON file", type=["png", "jpg", "jpeg", "webp", "json"], key="single")
     if not uploaded:
-        st.markdown('<div class="card" style="margin-top:1rem"><div class="card-title">Start with one invoice</div><div class="card-copy">LedgerLens extracts the key fields, checks the totals, and explains every risk signal in one reviewable report.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="card" style="margin-top:1rem"><div class="card-title">Start with one invoice</div><div class="card-copy">RazorLens extracts the key fields, checks the totals, and explains every risk signal in one reviewable report.</div></div>', unsafe_allow_html=True)
         if st.button("Load demo invoice", use_container_width=True):
-            st.session_state["result"] = pipeline.process_invoice({"invoice_number": "LL-DEMO-1042", "date": "2024-08-19", "due_date": "2024-09-18", "vendor": "Northstar Office Supply", "vendor_tax_id": "IN-29-8842", "client": "LedgerLens Operations", "subtotal": 1480.00, "tax_rate": 18.0, "tax": 266.40, "total": 1746.40, "source_name": "demo_invoice.json"})
+            st.session_state["result"] = pipeline.process_invoice({"invoice_number": "RL-DEMO-1042", "date": "2024-08-19", "due_date": "2024-09-18", "vendor": "Northstar Office Supply", "vendor_tax_id": "IN-29-8842", "client": "RazorLens Operations", "subtotal": 1480.00, "tax_rate": 18.0, "tax": 266.40, "total": 1746.40, "source_name": "demo_invoice.json"})
         if "result" not in st.session_state:
             return
     if st.button("Analyze invoice", type="primary", use_container_width=True):
@@ -227,7 +228,13 @@ def render_batch(pipeline: InvoicePipeline) -> None:
 def main() -> None:
     inject_styles()
     with st.sidebar:
-        st.markdown('<div class="brand"><div class="brand-mark">L</div><div><div class="brand-name">LedgerLens</div><div class="brand-sub">Invoice intelligence</div></div></div>', unsafe_allow_html=True)
+        logo_path = Path(__file__).parent / "assets" / "logo.jpg"
+        if logo_path.exists():
+            logo_b64 = base64.b64encode(logo_path.read_bytes()).decode()
+            logo_html = f'<img class="brand-logo" src="data:image/jpeg;base64,{logo_b64}" alt="RazorLens logo">'
+        else:
+            logo_html = '<div style="width:44px;height:44px;display:grid;place-items:center;background:var(--teal);color:#061311;border-radius:12px;font-size:18px;font-weight:800;">R</div>'
+        st.markdown(f'<div class="brand">{logo_html}<div><div class="brand-name">RazorLens</div><div class="brand-sub">Invoice intelligence</div></div></div>', unsafe_allow_html=True)
         st.markdown("### Workspace")
         mode = st.radio("Choose a review mode", ["Single invoice", "Batch review"], label_visibility="collapsed")
         st.divider()
@@ -239,7 +246,7 @@ def main() -> None:
         render_single(pipeline)
     else:
         render_batch(pipeline)
-    st.markdown('<div style="text-align:center;color:#8A9796;font-size:.7rem;margin:3rem 0 1rem;font-family:DM Mono,monospace;letter-spacing:.08em">LEDGERLENS / REVIEW WITH CONFIDENCE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;color:#8A9796;font-size:.7rem;margin:3rem 0 1rem;font-family:DM Mono,monospace;letter-spacing:.08em">RAZORLENS / REVIEW WITH CONFIDENCE</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
