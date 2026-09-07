@@ -163,9 +163,18 @@ SCRIPT_TO_LANGUAGE = {
 
 def configure_tesseract() -> Optional[Path]:
     """
-    Find Tesseract installation.
+    Find Tesseract installation on Windows or Linux.
     """
 
+    # Linux / Render:
+    # Always prefer the system-installed Tesseract.
+    discovered = shutil.which("tesseract")
+
+    if discovered:
+        pytesseract.pytesseract.tesseract_cmd = discovered
+        return Path(discovered)
+
+    # Windows / local development:
     project_binary = (
         Path(__file__).resolve().parents[1]
         / "tools"
@@ -180,20 +189,9 @@ def configure_tesseract() -> Optional[Path]:
     ]
 
     for candidate in candidates:
-
         if candidate.exists():
-
             pytesseract.pytesseract.tesseract_cmd = str(candidate)
-
             return candidate
-
-    discovered = shutil.which("tesseract")
-
-    if discovered:
-
-        pytesseract.pytesseract.tesseract_cmd = discovered
-
-        return Path(discovered)
 
     return None
 
