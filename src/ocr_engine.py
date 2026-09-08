@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import os
 import shutil
 import re
 
@@ -163,27 +164,38 @@ SCRIPT_TO_LANGUAGE = {
 
 def configure_tesseract() -> Optional[Path]:
     """
-    Find Tesseract installation on Windows or Linux.
+    Find Tesseract installation on Windows or Linux and ensure
+    tessdata directory containing all 20+ languages is loaded.
     """
-
-    # Linux / Render:
-    # Always prefer the system-installed Tesseract.
-    discovered = shutil.which("tesseract")
-
-    if discovered:
-        pytesseract.pytesseract.tesseract_cmd = discovered
-        return Path(discovered)
-
-    # Windows / local development:
     project_binary = (
         Path(__file__).resolve().parents[1]
         / "tools"
         / "tesseract"
         / "tesseract.exe"
     )
+    project_tessdata = (
+        Path(__file__).resolve().parents[1]
+        / "tools"
+        / "tesseract"
+        / "tessdata"
+    )
+
+    # If project-bundled tessdata exists, ensure TESSDATA_PREFIX is set
+    if project_tessdata.exists() and "TESSDATA_PREFIX" not in os.environ:
+        os.environ["TESSDATA_PREFIX"] = str(project_tessdata)
+
+    # Windows / project binary preferred if available with full language pack
+    if project_binary.exists():
+        pytesseract.pytesseract.tesseract_cmd = str(project_binary)
+        return project_binary
+
+    # Linux / Render / system-installed Tesseract
+    discovered = shutil.which("tesseract")
+    if discovered:
+        pytesseract.pytesseract.tesseract_cmd = discovered
+        return Path(discovered)
 
     candidates = [
-        project_binary,
         Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
         Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
     ]
@@ -239,12 +251,12 @@ def get_supported_installed_languages() -> dict[str, str]:
 # =========================================================
 
 def resolve_language(
-    language: str = "auto"
+    language: str = "auto",
+    sample_text: Optional[str] = None,
 ) -> str:
-
     language = language.lower().strip()
 
-    # Explicit language
+    # Explicit language name
     if language in LANGUAGES:
         return LANGUAGES[language]
 
@@ -252,45 +264,23 @@ def resolve_language(
     if language in LANGUAGES.values():
         return language
 
-    # Automatic mode
+    # Automatic script detection if sample text is provided
+    if language == "auto" and sample_text:
+        script = detect_script(sample_text)
+        if script and script in SCRIPT_TO_LANGUAGE:
+            installed = set(get_installed_languages())
+            target_langs = [l for l in SCRIPT_TO_LANGUAGE[script].split("+") if l in installed]
+            if target_langs:
+                return "+".join(target_langs)
+
+    # Automatic mode default: Multi-script pack with Arabic, Hindi, and European languages
     if language == "auto":
-
         installed = set(get_installed_languages())
-
-        # Prefer a broad multilingual configuration
-        preferred = [
-            "eng",
-            "ara",
-            "hin",
-            "ben",
-            "ori",
-            "tam",
-            "tel",
-            "kan",
-            "mal",
-            "mar",
-            "guj",
-            "pan",
-            "urd",
-            "fra",
-            "deu",
-            "spa",
-            "por",
-            "ita",
-            "nld",
-            "tur",
-        ]
-
-        available = [
-            code
-            for code in preferred
-            if code in installed
-        ]
-
+        auto_pack = ["ara", "hin", "eng", "fra", "deu", "spa", "por", "ita", "nld", "tur"]
+        available = [code for code in auto_pack if code in installed]
         if available:
             return "+".join(available)
-
-        return "eng"
+        return "eng" if "eng" in installed else ("+".join(list(installed)[:4]) if installed else "eng")
 
     return "eng"
 
@@ -301,25 +291,22 @@ def resolve_language(
 
 def preprocess_for_ocr(image: Image.Image) -> np.ndarray:
     """
-    Prepare invoice image for OCR with dimension guards against memory exhaustion.
+    Prepare invoice image for OCR with dimension guards and contrast optimization.
+    Preserves text edges without destructive binarization.
     """
     # Guard against decompression bombs and excessively huge images
     width, height = image.size
     if width > 10000 or height > 10000 or (width * height) > 30_000_000:
         raise ValueError(f"Image dimensions ({width}x{height}) exceed maximum allowed size.")
 
+    # Auto-orient based on EXIF
     image = ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
-
-    # Downscale if image is already sufficiently large to avoid 2x blowup
-    if max(width, height) > 3000:
-        image.thumbnail((2500, 2500), Image.Resampling.LANCZOS)
-
-    gray = ImageOps.grayscale(image)
+    gray = image.convert("L")
     arr = np.array(gray)
 
-    # Upscale only if resolution is modest (< 2000px max dimension)
-    if max(arr.shape[:2]) < 2000:
+    # Upscale only if resolution is low (< 1400px max dimension)
+    h, w = arr.shape
+    if max(h, w) < 1400:
         arr = cv2.resize(
             arr,
             None,
@@ -327,25 +314,21 @@ def preprocess_for_ocr(image: Image.Image) -> np.ndarray:
             fy=2.0,
             interpolation=cv2.INTER_CUBIC,
         )
+    elif max(h, w) > 3000:
+        scale = 2500.0 / max(h, w)
+        arr = cv2.resize(
+            arr,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_AREA,
+        )
 
-    # Remove small noise
-    arr = cv2.GaussianBlur(
-        arr,
-        (3, 3),
-        0,
-    )
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) for uneven illumination
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(arr)
 
-    # Adaptive threshold works better for uneven invoice lighting
-    binary = cv2.adaptiveThreshold(
-        arr,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31,
-        11,
-    )
-
-    return binary
+    return enhanced
 
 
 # =========================================================
@@ -357,39 +340,8 @@ def extract_text(
     language: str = "auto",
 ) -> str:
     """
-    Extract text from an invoice image.
-
-    Parameters
-    ----------
-    image_path:
-        Path to invoice image.
-
-    language:
-        Language name such as:
-            english
-            arabic
-            hindi
-            bengali
-            odia
-            tamil
-            telugu
-            kannada
-            malayalam
-            marathi
-            gujarati
-            punjabi
-            urdu
-            french
-            german
-            spanish
-            portuguese
-            italian
-            dutch
-            turkish
-
-        Use 'auto' for automatic multilingual mode.
+    Extract text from an invoice image across 20+ supported languages.
     """
-
     path = Path(image_path)
 
     if not path.exists():
@@ -403,28 +355,46 @@ def extract_text(
         )
 
     try:
-
         # Open image
         image = Image.open(path)
 
         # Preprocess
         processed = preprocess_for_ocr(image)
 
-        # Resolve OCR language
-        lang = resolve_language(language)
-
         # Tesseract configuration
         config = "--oem 3 --psm 6"
 
-        # OCR with 30-second timeout to prevent CPU hanging on corrupt images
-        text = pytesseract.image_to_string(
-            processed,
-            lang=lang,
-            config=config,
-            timeout=30,
-        )
+        if language == "auto":
+            # Initial fast pass with Latin pack
+            lang = resolve_language("auto")
+            text = pytesseract.image_to_string(
+                processed,
+                lang=lang,
+                config=config,
+                timeout=25,
+            ).strip()
 
-        text = text.strip()
+            # Check if text contains non-Latin scripts (e.g. Arabic, Devanagari, Bengali, etc.)
+            script = detect_script(text)
+            if script and script != "latin":
+                script_lang = resolve_language("auto", sample_text=text)
+                if script_lang != lang:
+                    re_text = pytesseract.image_to_string(
+                        processed,
+                        lang=script_lang,
+                        config=config,
+                        timeout=25,
+                    ).strip()
+                    if re_text:
+                        text = re_text
+        else:
+            lang = resolve_language(language)
+            text = pytesseract.image_to_string(
+                processed,
+                lang=lang,
+                config=config,
+                timeout=30,
+            ).strip()
 
         if not text:
             return (

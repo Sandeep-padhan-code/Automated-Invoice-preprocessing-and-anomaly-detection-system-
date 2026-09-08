@@ -19,7 +19,7 @@ logger = setup_logger("ledgerlens.pipeline")
 
 
 class InvoicePipeline:
-    def __init__(self, model_path: str | Path = "models/random_forest.pkl"):
+    def __init__(self, model_path: str | Path = "models/logistic_regression.pkl"):
         self.model_path = Path(model_path)
         self.detector = AnomalyDetector(self.model_path) if self.model_path.exists() else None
         if self.detector:
@@ -45,8 +45,8 @@ class InvoicePipeline:
         result["json_path"] = str(json_path)
         return result
 
-    def process_image(self, image_path: str | Path) -> Dict[str, Any]:
-        text = extract_text(image_path)
+    def process_image(self, image_path: str | Path, language: str = "auto") -> Dict[str, Any]:
+        text = extract_text(image_path, language=language)
         invoice = parse_ocr_text(text)
         result = self.process_invoice(invoice)
         if text.startswith("OCR_ERROR:"):
